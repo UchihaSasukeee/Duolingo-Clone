@@ -73,15 +73,25 @@ def get_user(clerk_id: str = Depends(get_current_user_id), db: Session = Depends
 @app.put("/api/user", response_model=schemas.UserResponse)
 def update_user(user_data: schemas.UserSchema, clerk_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
     user = db.query(models.UserDB).filter(models.UserDB.clerk_id == clerk_id).first()
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    user.hearts = user_data.hearts
-    user.xp = user_data.xp
-    user.gems = user_data.gems
-    user.streak = user_data.streak
-    if user_data.active_course_id is not None:
-        user.active_course_id = user_data.active_course_id
+        user = models.UserDB(
+            clerk_id=clerk_id,
+            hearts=user_data.hearts,
+            xp=user_data.xp,
+            gems=user_data.gems,
+            streak=user_data.streak,
+            active_course_id=user_data.active_course_id or 1,
+            last_active_date=today_str,
+        )
+        db.add(user)
+    else:
+        user.hearts = user_data.hearts
+        user.xp = user_data.xp
+        user.gems = user_data.gems
+        user.streak = user_data.streak
+        if user_data.active_course_id is not None:
+            user.active_course_id = user_data.active_course_id
     
     db.commit()
     db.refresh(user)
@@ -104,9 +114,12 @@ def get_courses(db: Session = Depends(get_db)):
 @app.post("/api/user/course")
 def select_course(course_id: int, clerk_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
     user = db.query(models.UserDB).filter(models.UserDB.clerk_id == clerk_id).first()
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    user.active_course_id = course_id
+        user = models.UserDB(clerk_id=clerk_id, hearts=5, xp=0, gems=50, streak=0, active_course_id=course_id, last_active_date=today_str)
+        db.add(user)
+    else:
+        user.active_course_id = course_id
     db.commit()
     return {"status": "ok", "active_course_id": course_id}
 

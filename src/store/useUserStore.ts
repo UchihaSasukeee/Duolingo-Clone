@@ -36,14 +36,21 @@ import { API_BASE } from "@/utils/api";
 
 const BASE_API = `${API_BASE}/api`;
 
+const DEFAULT_COURSES: Course[] = [
+  { id: 1, title: "Spanish", flag_emoji: "🇪🇸", code: "es" },
+  { id: 2, title: "German", flag_emoji: "🇩🇪", code: "de" },
+  { id: 3, title: "Japanese", flag_emoji: "🇯🇵", code: "ja" },
+  { id: 4, title: "French", flag_emoji: "🇫🇷", code: "fr" },
+];
+
 export const useUserStore = create<UserState>((set, get) => ({
   hearts: 5,
   gems: 50,
   streak: 0,
   xp: 0,
-  active_course_id: null,
-  courses: [],
-  activeCourse: null,
+  active_course_id: 1,
+  courses: DEFAULT_COURSES,
+  activeCourse: DEFAULT_COURSES[0],
   isLoading: true,
   token: null,
 
@@ -54,11 +61,11 @@ export const useUserStore = create<UserState>((set, get) => ({
       const res = await fetch(`${BASE_API}/courses`);
       if (res.ok) {
         const data: Course[] = await res.json();
-        set({ courses: data });
-        const currentActiveId = get().active_course_id;
-        if (currentActiveId) {
-          const found = data.find((c) => c.id === currentActiveId);
-          if (found) set({ activeCourse: found });
+        if (Array.isArray(data) && data.length > 0) {
+          set({ courses: data });
+          const currentActiveId = get().active_course_id || 1;
+          const found = data.find((c) => c.id === currentActiveId) || data[0];
+          if (found) set({ activeCourse: found, active_course_id: found.id });
         }
       }
     } catch (error) {
@@ -67,28 +74,30 @@ export const useUserStore = create<UserState>((set, get) => ({
   },
 
   selectCourse: async (courseId: number) => {
+    // 1. Immediately update UI state so user is never stuck
+    const courses = get().courses.length > 0 ? get().courses : DEFAULT_COURSES;
+    const found = courses.find((c) => c.id === courseId) || courses[0];
+    set({ active_course_id: courseId, activeCourse: found });
+
     const token = get().token;
     if (!token) return;
 
     try {
-      const res = await fetch(`${BASE_API}/user/course?course_id=${courseId}`, {
+      await fetch(`${BASE_API}/user/course?course_id=${courseId}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) {
-        set({ active_course_id: courseId });
-        const found = get().courses.find((c) => c.id === courseId);
-        if (found) set({ activeCourse: found });
-        await get().fetchUser();
-      }
     } catch (error) {
-      console.error("Failed to select course", error);
+      console.error("Failed to select course on server", error);
     }
   },
 
   fetchUser: async () => {
     const token = get().token;
-    if (!token) return;
+    if (!token) {
+      set({ isLoading: false });
+      return;
+    }
 
     try {
       const res = await fetch(`${BASE_API}/user`, {
@@ -96,16 +105,20 @@ export const useUserStore = create<UserState>((set, get) => ({
       });
       if (res.ok) {
         const data = await res.json();
+        const activeId = data.active_course_id || 1;
+        const courses = get().courses.length > 0 ? get().courses : DEFAULT_COURSES;
+        const found = courses.find((c) => c.id === activeId) || courses[0];
+
         set({
-          hearts: data.hearts,
-          gems: data.gems,
-          streak: data.streak,
-          xp: data.xp,
-          active_course_id: data.active_course_id,
+          hearts: data.hearts ?? 5,
+          gems: data.gems ?? 50,
+          streak: data.streak ?? 0,
+          xp: data.xp ?? 0,
+          active_course_id: activeId,
+          activeCourse: found,
           isLoading: false,
         });
 
-        // Ensure courses are fetched and activeCourse is mapped
         await get().fetchCourses();
       } else {
         set({ isLoading: false });
