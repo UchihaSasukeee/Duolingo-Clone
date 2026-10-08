@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, Fragment } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useUserStore } from "@/store/useUserStore";
+import { useUser } from "@clerk/react";
 import { Heart, X, Sparkles, Award, Zap, AlertCircle, Keyboard, LayoutGrid, Gem, Volume2 } from "lucide-react";
 import { Button } from "@/components/Button";
 import { useSoundEffects } from "@/hooks/useSoundEffects";
@@ -17,6 +18,12 @@ export default function LessonPage() {
   const navigate = useNavigate();
   const { hearts, gems, reduceHearts, spendGems, refillHearts, completeLesson, token, activeCourse } = useUserStore();
   const { playCorrect, playWrong, playFinished } = useSoundEffects();
+  const { user } = useUser();
+  const userId = user?.id || "guest";
+  const courseId = activeCourse?.id || 1;
+
+  const getSeenWordsKey = (uId: string, cId: number | string) =>
+    `duolingo_seen_words_${uId}_${cId}`;
 
   const [challenges, setChallenges] = useState<any[]>([]);
   const [currentChallengeIndex, setCurrentChallengeIndex] = useState(0);
@@ -24,13 +31,26 @@ export default function LessonPage() {
 
   // Track words seen in previous completed lessons & previous challenges
   const [seenWords, setSeenWords] = useState<Set<string>>(() => {
-    const courseId = activeCourse?.id || 1;
+    // Clean up any legacy non-namespaced keys from prior versions
     try {
-      const cached = localStorage.getItem(`duolingo_seen_words_${courseId}`);
-      if (cached) {
-        return new Set(JSON.parse(cached));
+      const legacyKeys: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && /^duolingo_seen_words_\d+$/.test(k)) {
+          legacyKeys.push(k);
+        }
       }
+      legacyKeys.forEach((k) => localStorage.removeItem(k));
     } catch {}
+
+    if (userId && userId !== "guest") {
+      try {
+        const cached = localStorage.getItem(getSeenWordsKey(userId, courseId));
+        if (cached) {
+          return new Set(JSON.parse(cached));
+        }
+      } catch {}
+    }
     return new Set();
   });
 
@@ -64,31 +84,53 @@ export default function LessonPage() {
       .catch(() => setIsLoading(false));
   }, [id, token]);
 
+  // Reload local seen words whenever user ID or course ID changes
+  useEffect(() => {
+    if (!userId || userId === "guest") {
+      setSeenWords(new Set());
+      return;
+    }
+    const key = getSeenWordsKey(userId, courseId);
+    try {
+      const cached = localStorage.getItem(key);
+      if (cached) {
+        setSeenWords(new Set(JSON.parse(cached)));
+      } else {
+        setSeenWords(new Set());
+      }
+    } catch {
+      setSeenWords(new Set());
+    }
+  }, [userId, courseId]);
+
   // Fetch seen words from completed lessons for this course
   useEffect(() => {
-    if (!token) return;
-    const courseId = activeCourse?.id || 1;
+    if (!token || !userId || userId === "guest") return;
+    const key = getSeenWordsKey(userId, courseId);
+
     fetch(`${API_BASE}/api/user/seen-words?course_id=${courseId}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
       .then((data) => {
         if (data?.words && Array.isArray(data.words)) {
-          setSeenWords((prev) => {
-            const nextSet = new Set(prev);
-            data.words.forEach((w: string) => nextSet.add(w.toLowerCase()));
-            try {
-              localStorage.setItem(
-                `duolingo_seen_words_${courseId}`,
-                JSON.stringify(Array.from(nextSet))
-              );
-            } catch {}
-            return nextSet;
-          });
+          const freshSet = new Set<string>();
+          data.words.forEach((w: string) => freshSet.add(w.toLowerCase()));
+          try {
+            const cached = localStorage.getItem(key);
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed)) {
+                parsed.forEach((w: string) => freshSet.add(w.toLowerCase()));
+              }
+            }
+            localStorage.setItem(key, JSON.stringify(Array.from(freshSet)));
+          } catch {}
+          setSeenWords(freshSet);
         }
       })
       .catch(() => {});
-  }, [token, activeCourse?.id]);
+  }, [token, courseId, userId]);
 
   // Compute effective seen words including all challenges preceding currentChallengeIndex in this lesson
   const effectiveSeenWords = useMemo(() => {
@@ -135,7 +177,7 @@ export default function LessonPage() {
       playFinished();
 
       // Persist all words from this completed lesson into seenWords
-      if (challenges.length > 0 && activeCourse?.id) {
+      if (challenges.length > 0 && activeCourse?.id && userId && userId !== "guest") {
         setSeenWords((prev) => {
           const nextSet = new Set(prev);
           challenges.forEach((ch) => {
@@ -144,7 +186,7 @@ export default function LessonPage() {
           });
           try {
             localStorage.setItem(
-              `duolingo_seen_words_${activeCourse.id}`,
+              getSeenWordsKey(userId, activeCourse.id),
               JSON.stringify(Array.from(nextSet))
             );
           } catch {}
@@ -236,20 +278,12 @@ export default function LessonPage() {
   const progress = (currentChallengeIndex / challenges.length) * 100;
 
   const handleNext = () => {
-    // Record current challenge words into seenWords before advancing!
+    // Record current challenge words into in-memory seenWords before advancing!
     if (challenge) {
       const newWords = extractWordsFromChallenge(challenge);
       setSeenWords((prev) => {
         const nextSet = new Set(prev);
         newWords.forEach((w) => nextSet.add(w.toLowerCase()));
-        if (activeCourse?.id) {
-          try {
-            localStorage.setItem(
-              `duolingo_seen_words_${activeCourse.id}`,
-              JSON.stringify(Array.from(nextSet))
-            );
-          } catch {}
-        }
         return nextSet;
       });
     }

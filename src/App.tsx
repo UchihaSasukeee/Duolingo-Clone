@@ -30,7 +30,7 @@ function App() {
   const isLoading = useUserStore((state) => state.isLoading);
   const activeCourseId = useUserStore((state) => state.active_course_id);
   const setToken = useUserStore((state) => state.setToken);
-  const { getToken } = useAuth();
+  const { getToken, userId } = useAuth();
 
   useEffect(() => {
     let safetyTimer = setTimeout(() => {
@@ -39,10 +39,16 @@ function App() {
 
     const initAuth = async () => {
       try {
+        if (!userId) {
+          setToken(null);
+          return;
+        }
         const token = await getToken();
         if (token) {
           setToken(token);
           await fetchUser();
+        } else {
+          setToken(null);
         }
       } catch (err) {
         console.error("Auth init error:", err);
@@ -54,7 +60,7 @@ function App() {
     initAuth();
 
     return () => clearTimeout(safetyTimer);
-  }, [getToken, setToken, fetchUser]);
+  }, [getToken, setToken, fetchUser, userId]);
 
   if (isLoading) {
     return <div className="h-screen w-full flex items-center justify-center bg-white"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-green-500)]"></div></div>;
