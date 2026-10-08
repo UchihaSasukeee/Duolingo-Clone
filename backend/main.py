@@ -166,38 +166,61 @@ def get_user_seen_words(course_id: Optional[int] = None, clerk_id: str = Depends
     return {"words": list(seen)}
 
 @app.get("/api/units", response_model=List[schemas.UnitResponse])
-def get_units(course_id: Optional[int] = None, clerk_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
-    user = db.query(models.UserDB).filter(models.UserDB.clerk_id == clerk_id).first()
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
-    if not user:
-        user = models.UserDB(
-            clerk_id=clerk_id,
-            hearts=5,
-            xp=0,
-            gems=50,
-            streak=0,
-            active_course_id=course_id or 1,
-            last_active_date=today_str,
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    elif course_id and user.active_course_id != course_id:
-        user.active_course_id = course_id
-        db.commit()
-        db.refresh(user)
-    elif not user.active_course_id:
-        user.active_course_id = course_id or 1
-        db.commit()
-        db.refresh(user)
-    
-    target_course_id = course_id or user.active_course_id or 1
+def get_units(
+    course_id: Optional[int] = None,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
+    db: Session = Depends(get_db)
+):
+    clerk_id = None
+    if credentials:
+        try:
+            payload = jwt.decode(credentials.credentials, options={"verify_signature": False})
+            clerk_id = payload.get("sub")
+        except Exception:
+            pass
 
-    completed_records = db.query(models.UserProgress).filter(
-        models.UserProgress.user_id == user.id,
-        models.UserProgress.completed == True
-    ).all()
-    completed_ids = {p.lesson_id for p in completed_records}
+    user = None
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    if clerk_id:
+        try:
+            user = db.query(models.UserDB).filter(models.UserDB.clerk_id == clerk_id).first()
+            if not user:
+                user = models.UserDB(
+                    clerk_id=clerk_id,
+                    hearts=5,
+                    xp=0,
+                    gems=50,
+                    streak=0,
+                    active_course_id=course_id or 1,
+                    last_active_date=today_str,
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+            elif course_id and user.active_course_id != course_id:
+                user.active_course_id = course_id
+                db.commit()
+                db.refresh(user)
+            elif not user.active_course_id:
+                user.active_course_id = course_id or 1
+                db.commit()
+                db.refresh(user)
+        except Exception as e:
+            print("User init error in get_units:", e)
+            db.rollback()
+    
+    target_course_id = course_id or (user.active_course_id if user else None) or 1
+
+    completed_ids = set()
+    if user:
+        try:
+            completed_records = db.query(models.UserProgress).filter(
+                models.UserProgress.user_id == user.id,
+                models.UserProgress.completed == True
+            ).all()
+            completed_ids = {p.lesson_id for p in completed_records}
+        except Exception:
+            pass
 
     units = db.query(models.Unit).filter(models.Unit.course_id == target_course_id).order_by(models.Unit.order).all()
     if not units:

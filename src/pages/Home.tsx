@@ -24,36 +24,140 @@ interface Unit {
   lessons: Lesson[];
 }
 
-export default function Home() {
-  const [units, setUnits] = useState<Unit[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [activeGuidebookUnit, setActiveGuidebookUnit] = useState<Unit | null>(null);
+const DEFAULT_UNITS: Record<number, Unit[]> = {
+  1: [
+    {
+      id: 1,
+      title: "Unit 1: Basics & Greetings",
+      description: "Learn essential greetings, introduce yourself, and order basic items",
+      order: 1,
+      guidebook: "In Spanish, nouns have gender: 'el' is masculine and 'la' is feminine. Use 'Hola' for hello and 'Adiós' for goodbye.",
+      lessons: [
+        { id: 1, title: "Lesson 1: Hola!", order: 1, is_current: true, completed: false, locked: false },
+        { id: 2, title: "Lesson 2: Por Favor", order: 2, is_current: false, completed: false, locked: true },
+        { id: 3, title: "Lesson 3: Review", order: 3, is_current: false, completed: false, locked: true },
+      ],
+    },
+    {
+      id: 2,
+      title: "Unit 2: Cafe & Phrases",
+      description: "Order drinks and food in a Spanish café with polite phrases",
+      order: 2,
+      guidebook: "Order drinks politely using 'por favor' and thank your server with 'gracias'.",
+      lessons: [
+        { id: 4, title: "Lesson 1: Un Café", order: 1, is_current: false, completed: false, locked: true },
+        { id: 5, title: "Lesson 2: La Cuenta", order: 2, is_current: false, completed: false, locked: true },
+        { id: 6, title: "Lesson 3: Checkpoint", order: 3, is_current: false, completed: false, locked: true },
+      ],
+    },
+  ],
+  2: [
+    {
+      id: 3,
+      title: "Unit 1: German Basics",
+      description: "Master simple greetings, gender articles (der/die/das), and everyday nouns",
+      order: 1,
+      guidebook: "German nouns are always capitalized! Hallo means hello, and Danke means thank you.",
+      lessons: [
+        { id: 7, title: "Lesson 1: Hallo!", order: 1, is_current: true, completed: false, locked: false },
+        { id: 8, title: "Lesson 2: Bitte & Danke", order: 2, is_current: false, completed: false, locked: true },
+        { id: 9, title: "Lesson 3: Review", order: 3, is_current: false, completed: false, locked: true },
+      ],
+    },
+    {
+      id: 4,
+      title: "Unit 2: Cafe & Daily Life",
+      description: "Order coffee and snacks in a Berlin café with polite phrases",
+      order: 2,
+      guidebook: "Order coffee with 'Ein Kaffee, bitte!'.",
+      lessons: [
+        { id: 10, title: "Lesson 1: Ein Kaffee", order: 1, is_current: false, completed: false, locked: true },
+        { id: 11, title: "Lesson 2: Zahlen bitte", order: 2, is_current: false, completed: false, locked: true },
+        { id: 12, title: "Lesson 3: Checkpoint", order: 3, is_current: false, completed: false, locked: true },
+      ],
+    },
+  ],
+  3: [
+    {
+      id: 5,
+      title: "Unit 1: Japanese Basics",
+      description: "Master essential greetings and basic vocabulary with Romaji phonetic guides",
+      order: 1,
+      guidebook: "Konnichiwa means hello. Arigatou means thank you.",
+      lessons: [
+        { id: 13, title: "Lesson 1: Konnichiwa", order: 1, is_current: true, completed: false, locked: false },
+        { id: 14, title: "Lesson 2: Arigatou", order: 2, is_current: false, completed: false, locked: true },
+        { id: 15, title: "Lesson 3: Review", order: 3, is_current: false, completed: false, locked: true },
+      ],
+    },
+    {
+      id: 6,
+      title: "Unit 2: Greetings & Politeness",
+      description: "Navigate everyday Tokyo conversations with polite expressions",
+      order: 2,
+      guidebook: "Sumimasen means excuse me or sorry.",
+      lessons: [
+        { id: 16, title: "Lesson 1: Sumimasen", order: 1, is_current: false, completed: false, locked: true },
+        { id: 17, title: "Lesson 2: Sayounara", order: 2, is_current: false, completed: false, locked: true },
+        { id: 18, title: "Lesson 3: Checkpoint", order: 3, is_current: false, completed: false, locked: true },
+      ],
+    },
+  ],
+  4: [
+    {
+      id: 7,
+      title: "Unit 1: Basics & Salutations",
+      description: "Learn Parisian greetings, essential phrases, and café basics",
+      order: 1,
+      guidebook: "Bonjour means good morning/hello. Merci means thank you.",
+      lessons: [
+        { id: 19, title: "Lesson 1: Bonjour", order: 1, is_current: true, completed: false, locked: false },
+        { id: 20, title: "Lesson 2: S'il vous plaît", order: 2, is_current: false, completed: false, locked: true },
+        { id: 21, title: "Lesson 3: Review", order: 3, is_current: false, completed: false, locked: true },
+      ],
+    },
+    {
+      id: 8,
+      title: "Unit 2: Café & City Life",
+      description: "Order croissants and coffee with authentic Parisian flair",
+      order: 2,
+      guidebook: "Un croissant, s'il vous plaît!",
+      lessons: [
+        { id: 22, title: "Lesson 1: Un Croissant", order: 1, is_current: false, completed: false, locked: true },
+        { id: 23, title: "Lesson 2: L'addition", order: 2, is_current: false, completed: false, locked: true },
+        { id: 24, title: "Lesson 3: Checkpoint", order: 3, is_current: false, completed: false, locked: true },
+      ],
+    },
+  ],
+};
 
+export default function Home() {
   const token = useUserStore((state) => state.token);
-  const activeCourseId = useUserStore((state) => state.active_course_id);
+  const activeCourseId = useUserStore((state) => state.active_course_id) || 1;
   const activeCourse = useUserStore((state) => state.activeCourse);
 
-  useEffect(() => {
-    if (!token || !activeCourseId) {
-      setIsLoading(false);
-      return;
-    }
+  const [units, setUnits] = useState<Unit[]>(() => {
+    return DEFAULT_UNITS[activeCourseId] || DEFAULT_UNITS[1];
+  });
+  const [activeGuidebookUnit, setActiveGuidebookUnit] = useState<Unit | null>(null);
 
-    setIsLoading(true);
+  useEffect(() => {
+    const defaultList = DEFAULT_UNITS[activeCourseId] || DEFAULT_UNITS[1];
+    setUnits(defaultList);
+
     const targetCourse = activeCourseId || 1;
-    fetch(`${API_BASE}/api/units?course_id=${targetCourse}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    fetch(`${API_BASE}/api/units?course_id=${targetCourse}`, { headers })
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
           setUnits(data);
         }
-        setIsLoading(false);
       })
       .catch((err) => {
         console.error("Error fetching units:", err);
-        setIsLoading(false);
       });
   }, [token, activeCourseId]);
 
@@ -64,13 +168,7 @@ export default function Home() {
     <div className="flex justify-center px-4 md:px-8 py-8 gap-x-12 min-h-full">
       {/* Main Learning Path Column */}
       <div className="w-full max-w-[620px] flex flex-col items-center pb-24">
-        {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-y-4">
-            <div className="w-12 h-12 border-4 border-emerald-400 border-t-emerald-600 rounded-full animate-spin" />
-            <span className="font-extrabold text-neutral-400 text-sm">Loading your learning path...</span>
-          </div>
-        ) : (
-          units.map((unit, unitIndex) => {
+        {units.map((unit, unitIndex) => {
           return (
             <div key={unit.id} className="w-full mb-14">
               {/* Unit Header Banner */}
@@ -174,8 +272,7 @@ export default function Home() {
               </div>
             </div>
           );
-        })
-      )}
+        })}
       </div>
 
       {/* Right Desktop Promo Sidebar */}
