@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-green-500: #58cc02;
+  --color-green-600: #46a302;
+  --color-blue-500: #1cb0f6;
+  --color-blue-600: #1899d6;
+  --color-yellow-400: #ffc800;
+  --color-yellow-500: #ffb800;
+  --color-red-500: #ff4b4b;
+  --color-red-600: #ea2b2b;
+  --color-gray-border: #e5e5e5;
+  --color-gray-bg: #f7f7f7;
+  --color-gray-text: #777777;
+  --font-sans: "Nunito", var(--font-geist-sans), sans-serif;
+}
+
+body {
+  background-color: #ffffff;
+  color: #3c3c3c;
+  font-family: var(--font-sans);
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
+.animate-shake {
+  animation: shake 0.4s ease-in-out;
+}
+
