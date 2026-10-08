@@ -166,18 +166,42 @@ def get_user_seen_words(course_id: Optional[int] = None, clerk_id: str = Depends
     return {"words": list(seen)}
 
 @app.get("/api/units", response_model=List[schemas.UnitResponse])
-def get_units(clerk_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+def get_units(course_id: Optional[int] = None, clerk_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
     user = db.query(models.UserDB).filter(models.UserDB.clerk_id == clerk_id).first()
-    if not user or not user.active_course_id:
-        return []
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    if not user:
+        user = models.UserDB(
+            clerk_id=clerk_id,
+            hearts=5,
+            xp=0,
+            gems=50,
+            streak=0,
+            active_course_id=course_id or 1,
+            last_active_date=today_str,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    elif course_id and user.active_course_id != course_id:
+        user.active_course_id = course_id
+        db.commit()
+        db.refresh(user)
+    elif not user.active_course_id:
+        user.active_course_id = course_id or 1
+        db.commit()
+        db.refresh(user)
     
+    target_course_id = course_id or user.active_course_id or 1
+
     completed_records = db.query(models.UserProgress).filter(
         models.UserProgress.user_id == user.id,
         models.UserProgress.completed == True
     ).all()
     completed_ids = {p.lesson_id for p in completed_records}
 
-    units = db.query(models.Unit).filter(models.Unit.course_id == user.active_course_id).order_by(models.Unit.order).all()
+    units = db.query(models.Unit).filter(models.Unit.course_id == target_course_id).order_by(models.Unit.order).all()
+    if not units:
+        units = db.query(models.Unit).filter(models.Unit.course_id == 1).order_by(models.Unit.order).all()
     
     unit_responses = []
     found_current = False

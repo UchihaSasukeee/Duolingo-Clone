@@ -40,12 +40,15 @@ export default function Home() {
     }
 
     setIsLoading(true);
-    fetch(`${API_BASE}/api/units`, {
+    const targetCourse = activeCourseId || 1;
+    fetch(`${API_BASE}/api/units?course_id=${targetCourse}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
       .then((data) => {
-        setUnits(data);
+        if (Array.isArray(data) && data.length > 0) {
+          setUnits(data);
+        }
         setIsLoading(false);
       })
       .catch((err) => {
@@ -61,7 +64,13 @@ export default function Home() {
     <div className="flex justify-center px-4 md:px-8 py-8 gap-x-12 min-h-full">
       {/* Main Learning Path Column */}
       <div className="w-full max-w-[620px] flex flex-col items-center pb-24">
-        {units.map((unit, unitIndex) => {
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-24 gap-y-4">
+            <div className="w-12 h-12 border-4 border-emerald-400 border-t-emerald-600 rounded-full animate-spin" />
+            <span className="font-extrabold text-neutral-400 text-sm">Loading your learning path...</span>
+          </div>
+        ) : (
+          units.map((unit, unitIndex) => {
           return (
             <div key={unit.id} className="w-full mb-14">
               {/* Unit Header Banner */}
@@ -165,14 +174,8 @@ export default function Home() {
               </div>
             </div>
           );
-        })}
-
-        {isLoading && (
-          <div className="py-24 flex flex-col items-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-green-500)] mb-4"></div>
-            <p className="text-neutral-400 font-bold">Loading your lessons...</p>
-          </div>
-        )}
+        })
+      )}
       </div>
 
       {/* Right Desktop Promo Sidebar */}
