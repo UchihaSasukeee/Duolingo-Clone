@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useUserStore } from "@/store/useUserStore";
 import { PromoSidebar } from "@/components/PromoSidebar";
@@ -135,6 +135,8 @@ export default function Home() {
   const token = useUserStore((state) => state.token);
   const activeCourseId = useUserStore((state) => state.active_course_id) || 1;
   const activeCourse = useUserStore((state) => state.activeCourse);
+  const completedLessonIds = useUserStore((state) => state.completedLessonIds);
+  const userId = useUserStore((state) => state.userId);
 
   const [units, setUnits] = useState<Unit[]>(() => {
     return DEFAULT_UNITS[activeCourseId] || DEFAULT_UNITS[1];
@@ -154,12 +156,81 @@ export default function Home() {
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
           setUnits(data);
+          const serverCompleted = data.flatMap((u: Unit) =>
+            u.lessons.filter((l: Lesson) => l.completed).map((l: Lesson) => l.id)
+          );
+          if (serverCompleted.length > 0) {
+            useUserStore.setState((s) => {
+              const merged = Array.from(new Set([...s.completedLessonIds, ...serverCompleted]));
+              if (userId) {
+                try {
+                  localStorage.setItem(
+                    `duolingo_completed_lessons_${userId}`,
+                    JSON.stringify(merged)
+                  );
+                } catch {}
+              }
+              return { completedLessonIds: merged };
+            });
+          }
         }
       })
       .catch((err) => {
         console.error("Error fetching units:", err);
       });
-  }, [token, activeCourseId]);
+  }, [token, activeCourseId, userId]);
+
+  // Compute progressive completion state ensuring completed lessons advance learning path
+  const enrichedUnits = useMemo(() => {
+    const completedSet = new Set<number>(completedLessonIds);
+    if (userId) {
+      try {
+        const cached = localStorage.getItem(`duolingo_completed_lessons_${userId}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((id: number) => completedSet.add(Number(id)));
+          }
+        }
+      } catch {}
+    }
+
+    let foundCurrent = false;
+
+    return units.map((unit) => {
+      const updatedLessons = unit.lessons.map((lesson) => {
+        const isDone = completedSet.has(lesson.id) || !!lesson.completed;
+        if (isDone) {
+          return {
+            ...lesson,
+            completed: true,
+            locked: false,
+            is_current: false,
+          };
+        } else if (!foundCurrent) {
+          foundCurrent = true;
+          return {
+            ...lesson,
+            completed: false,
+            locked: false,
+            is_current: true,
+          };
+        } else {
+          return {
+            ...lesson,
+            completed: false,
+            locked: true,
+            is_current: false,
+          };
+        }
+      });
+
+      return {
+        ...unit,
+        lessons: updatedLessons,
+      };
+    });
+  }, [units, completedLessonIds, userId]);
 
   // Sinuous horizontal offset pattern: [0, 40, 60, 40, 0, -40, -60, -40]
   const offsets = [0, 40, 60, 40, 0, -40, -60, -40];
@@ -168,7 +239,7 @@ export default function Home() {
     <div className="flex justify-center px-4 md:px-8 py-8 gap-x-12 min-h-full">
       {/* Main Learning Path Column */}
       <div className="w-full max-w-[620px] flex flex-col items-center pb-24">
-        {units.map((unit, unitIndex) => {
+        {enrichedUnits.map((unit, unitIndex) => {
           return (
             <div key={unit.id} className="w-full mb-14">
               {/* Unit Header Banner */}

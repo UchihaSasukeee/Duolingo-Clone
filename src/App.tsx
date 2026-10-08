@@ -30,9 +30,12 @@ function App() {
   const isLoading = useUserStore((state) => state.isLoading);
   const activeCourseId = useUserStore((state) => state.active_course_id);
   const setToken = useUserStore((state) => state.setToken);
+  const setUserId = useUserStore((state) => state.setUserId);
   const { getToken, userId } = useAuth();
 
   useEffect(() => {
+    setUserId(userId || null);
+
     let safetyTimer = setTimeout(() => {
       useUserStore.setState({ isLoading: false });
     }, 2500);
@@ -60,7 +63,7 @@ function App() {
     initAuth();
 
     return () => clearTimeout(safetyTimer);
-  }, [getToken, setToken, fetchUser, userId]);
+  }, [getToken, setToken, fetchUser, userId, setUserId]);
 
   if (isLoading) {
     return <div className="h-screen w-full flex items-center justify-center bg-white"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-green-500)]"></div></div>;

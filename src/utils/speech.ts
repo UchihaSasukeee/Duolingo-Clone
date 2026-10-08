@@ -128,9 +128,66 @@ export function getSpeechTextForQuestion(question: string, courseCode?: string):
   return cleaned || null;
 }
 
+let currentAudio: HTMLAudioElement | null = null;
+
+function speakWithWebSpeech(clean: string, lang: string, slow: boolean): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      resolve(false);
+      return;
+    }
+
+    try {
+      window.speechSynthesis.cancel();
+      const langTag = SUPPORTED_LANG_TAGS[lang] || "es-ES";
+      const utterance = new SpeechSynthesisUtterance(clean);
+      utterance.lang = langTag;
+      utterance.rate = slow ? 0.65 : 0.88;
+      // Higher pitch ensures pleasant female voice tone
+      utterance.pitch = 1.15;
+
+      const voices = window.speechSynthesis.getVoices();
+      if (voices && voices.length > 0) {
+        const langPrefix = langTag.split("-")[0].toLowerCase();
+        
+        // Find matching voices for the foreign language
+        const langVoices = voices.filter(
+          (v) =>
+            v.lang.toLowerCase() === langTag.toLowerCase() ||
+            v.lang.toLowerCase().startsWith(langPrefix)
+        );
+
+        // Strictly prioritize native female voices and reject male voices (David, Mark, etc.)
+        const femaleVoice =
+          langVoices.find((v) =>
+            /google|female|zira|helena|laura|monica|paulina|sabina|hortense|julie|kyoko|nanami|elsa/i.test(
+              v.name
+            )
+          ) ||
+          langVoices.find(
+            (v) => !/david|mark|george|raul|ravi|male|stefan|pablo/i.test(v.name)
+          ) ||
+          langVoices[0];
+
+        if (femaleVoice) {
+          utterance.voice = femaleVoice;
+        }
+      }
+
+      utterance.onend = () => resolve(true);
+      utterance.onerror = () => resolve(false);
+
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
 /**
- * Speaks text using Web Speech API with language detection, custom voice matching, and speed control.
- * Strictly limited to Spanish, German, Japanese, and French.
+ * Speaks text with authentic native female pronunciation.
+ * Primary engine: high-fidelity native female Google TTS audio stream.
+ * Secondary engine: Web Speech API with strict female voice filtering.
  */
 export function speakText(
   text: string,
@@ -138,7 +195,7 @@ export function speakText(
   slow: boolean = false
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+    if (typeof window === "undefined") {
       resolve(false);
       return;
     }
@@ -148,8 +205,6 @@ export function speakText(
       return;
     }
 
-    // If text contains an embedded foreign target phrase (e.g. 'What does "la femme" mean?'),
-    // extract and speak ONLY the foreign phrase!
     const targetText = extractForeignTargetPhrase(text) || text;
     const clean = cleanTextForSpeech(targetText);
 
@@ -159,52 +214,66 @@ export function speakText(
       return;
     }
 
-    const langTag = resolveSpeechLanguage(clean, courseCode);
-    if (!langTag) {
-      resolve(false);
-      return;
-    }
+    stopSpeaking();
+
+    // Determine target language code (es, de, fr, ja)
+    let lang = (courseCode || "es").toLowerCase().trim();
+    if (isJapanese(clean)) lang = "ja";
+
+    let hasResolved = false;
+    const safeResolve = (val: boolean) => {
+      if (!hasResolved) {
+        hasResolved = true;
+        resolve(val);
+      }
+    };
+
+    // 1. Primary Engine: High-fidelity native female Google TTS audio
+    const encoded = encodeURIComponent(clean);
+    const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&client=tw-ob&q=${encoded}`;
 
     try {
-      window.speechSynthesis.cancel();
+      const audio = new Audio(audioUrl);
+      currentAudio = audio;
+      audio.playbackRate = slow ? 0.7 : 1.0;
 
-      const utterance = new SpeechSynthesisUtterance(clean);
-      utterance.lang = langTag;
-      utterance.rate = slow ? 0.6 : 0.88;
-      utterance.pitch = 1.0;
+      audio.onended = () => {
+        currentAudio = null;
+        safeResolve(true);
+      };
 
-      // Select highest quality available voice for the target language
-      const voices = window.speechSynthesis.getVoices();
-      if (voices && voices.length > 0) {
-        const langPrefix = langTag.split("-")[0].toLowerCase();
-        const matchingVoice =
-          voices.find((v) => v.lang.toLowerCase() === langTag.toLowerCase()) ||
-          voices.find((v) => v.lang.toLowerCase().startsWith(langPrefix));
-        if (matchingVoice) {
-          utterance.voice = matchingVoice;
-        }
+      audio.onerror = () => {
+        currentAudio = null;
+        speakWithWebSpeech(clean, lang, slow).then(safeResolve);
+      };
+
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          // If browser policy blocks unprompted audio autoplay, fallback gracefully
+          speakWithWebSpeech(clean, lang, slow).then(safeResolve);
+        });
       }
-
-      utterance.onend = () => resolve(true);
-      utterance.onerror = () => resolve(false);
-
-      window.speechSynthesis.speak(utterance);
-    } catch (err) {
-      console.warn("SpeechSynthesis error:", err);
-      resolve(false);
+    } catch {
+      speakWithWebSpeech(clean, lang, slow).then(safeResolve);
     }
   });
 }
 
 /**
- * Cancels any ongoing speech.
+ * Cancels any ongoing speech or audio.
  */
 export function stopSpeaking() {
+  if (currentAudio) {
+    try {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+    } catch {}
+    currentAudio = null;
+  }
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     try {
       window.speechSynthesis.cancel();
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 }

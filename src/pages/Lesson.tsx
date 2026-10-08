@@ -204,7 +204,7 @@ export default function LessonPage() {
         // canvas-confetti fallback safety
       }
 
-      const lessonId = Number(id) || 1;
+      const lessonId = Number(id) || challenges[0]?.lesson_id || 1;
       completeLesson(lessonId).then((res) => {
         if (res) {
           setEarnedStats({ xp: res.xp_earned, gems: res.gems_earned });
