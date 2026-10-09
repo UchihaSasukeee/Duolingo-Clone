@@ -42,7 +42,7 @@ export function PromoSidebar() {
         ) : (
           <>
             <p className="text-sm text-neutral-500 font-bold">
-              All 5 daily lessons available! Hearts replenish daily, and mistakes never cost hearts.
+              You have all 5 hearts! Mistakes during lessons cost 1 heart. Practice anytime to recharge.
             </p>
             <Link to="/practice" className="mt-1">
               <Button variant="outline" className="w-full flex items-center justify-center gap-x-2">

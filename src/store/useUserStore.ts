@@ -48,7 +48,14 @@ const DEFAULT_COURSES: Course[] = [
 ];
 
 export const useUserStore = create<UserState>((set, get) => ({
-  hearts: 5,
+  hearts: (() => {
+    try {
+      const cached = localStorage.getItem("duolingo_current_hearts");
+      return cached !== null ? Number(cached) : 5;
+    } catch {
+      return 5;
+    }
+  })(),
   gems: 50,
   streak: 0,
   xp: 0,
@@ -70,6 +77,12 @@ export const useUserStore = create<UserState>((set, get) => ({
           if (Array.isArray(ids)) {
             set({ completedLessonIds: ids.map(Number) });
           }
+        }
+        const cachedHearts =
+          localStorage.getItem(`duolingo_hearts_${userId}`) ??
+          localStorage.getItem("duolingo_current_hearts");
+        if (cachedHearts !== null) {
+          set({ hearts: Number(cachedHearts) });
         }
       } catch {}
     } else {
@@ -134,8 +147,19 @@ export const useUserStore = create<UserState>((set, get) => ({
         const courses = get().courses.length > 0 ? get().courses : DEFAULT_COURSES;
         const found = courses.find((c) => c.id === activeId) || courses[0];
 
+        const uid = get().userId || "guest";
+        let finalHearts = data.hearts ?? 5;
+        try {
+          const cachedHearts =
+            localStorage.getItem(`duolingo_hearts_${uid}`) ??
+            localStorage.getItem("duolingo_current_hearts");
+          if (cachedHearts !== null) {
+            finalHearts = Number(cachedHearts);
+          }
+        } catch {}
+
         set({
-          hearts: data.hearts ?? 5,
+          hearts: finalHearts,
           gems: data.gems ?? 50,
           streak: data.streak ?? 0,
           xp: data.xp ?? 0,
@@ -173,7 +197,13 @@ export const useUserStore = create<UserState>((set, get) => ({
   },
 
   reduceHearts: () => {
-    set((state) => ({ hearts: Math.max(0, state.hearts - 1) }));
+    const nextHearts = Math.max(0, get().hearts - 1);
+    set({ hearts: nextHearts });
+    const uid = get().userId || "guest";
+    try {
+      localStorage.setItem(`duolingo_hearts_${uid}`, String(nextHearts));
+      localStorage.setItem("duolingo_current_hearts", String(nextHearts));
+    } catch {}
     get().syncUser();
   },
 
@@ -199,6 +229,11 @@ export const useUserStore = create<UserState>((set, get) => ({
 
   refillHearts: () => {
     set({ hearts: 5 });
+    const uid = get().userId || "guest";
+    try {
+      localStorage.setItem(`duolingo_hearts_${uid}`, "5");
+      localStorage.setItem("duolingo_current_hearts", "5");
+    } catch {}
     get().syncUser();
   },
 
@@ -228,8 +263,8 @@ export const useUserStore = create<UserState>((set, get) => ({
         });
         if (res.ok) {
           const data = await res.json();
+          // Keep local hearts so decrements are never undone on completion
           set({
-            hearts: data.hearts,
             xp: data.xp,
             gems: data.gems,
             streak: data.streak,
@@ -268,15 +303,21 @@ export const useUserStore = create<UserState>((set, get) => ({
       });
       if (res.ok) {
         const data = await res.json();
+        const nextHearts = Math.min(5, (get().hearts || 0) + (data.hearts_added || 1));
         set({
-          hearts: data.hearts,
+          hearts: nextHearts,
           xp: data.xp,
           gems: data.gems,
         });
+        const uid = get().userId || "guest";
+        try {
+          localStorage.setItem(`duolingo_hearts_${uid}`, String(nextHearts));
+          localStorage.setItem("duolingo_current_hearts", String(nextHearts));
+        } catch {}
         return {
           success: true,
-          hearts_added: data.hearts_added,
-          xp_added: data.xp_added,
+          hearts_added: data.hearts_added || 1,
+          xp_added: data.xp_added || 10,
         };
       }
     } catch (error) {

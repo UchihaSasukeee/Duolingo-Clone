@@ -1,4 +1,6 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Response
+import urllib.request
+import urllib.parse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -555,3 +557,22 @@ def claim_quest(quest_id: str, clerk_id: str = Depends(get_current_user_id), db:
         "reward_gems": cfg["gems"],
         "claimed_quests": claimed_ids
     }
+
+@app.get("/api/tts")
+@app.get("/tts")
+def text_to_speech(lang: str = "es", text: str = "hola"):
+    try:
+        clean_text = text.strip()[:250]
+        encoded = urllib.parse.quote(clean_text)
+        target_lang = lang.lower().strip()
+        url = f"https://translate.google.com/translate_tts?ie=UTF-8&tl={target_lang}&client=tw-ob&q={encoded}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            content = resp.read()
+            return Response(content=content, media_type="audio/mpeg", headers={
+                "Cache-Control": "public, max-age=86400",
+                "Access-Control-Allow-Origin": "*"
+            })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

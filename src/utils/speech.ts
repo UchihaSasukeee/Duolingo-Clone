@@ -1,4 +1,5 @@
 import { isJapanese } from "./romaji";
+import { API_BASE } from "./api";
 
 /**
  * Strict map of the 4 supported learning languages for speech synthesis.
@@ -143,8 +144,8 @@ function speakWithWebSpeech(clean: string, lang: string, slow: boolean): Promise
       const utterance = new SpeechSynthesisUtterance(clean);
       utterance.lang = langTag;
       utterance.rate = slow ? 0.65 : 0.88;
-      // Higher pitch ensures pleasant female voice tone
-      utterance.pitch = 1.15;
+      // Higher pitch ensures distinctly female voice tone
+      utterance.pitch = 1.25;
 
       const voices = window.speechSynthesis.getVoices();
       if (voices && voices.length > 0) {
@@ -157,21 +158,35 @@ function speakWithWebSpeech(clean: string, lang: string, slow: boolean): Promise
             v.lang.toLowerCase().startsWith(langPrefix)
         );
 
-        // Strictly prioritize native female voices and reject male voices (David, Mark, etc.)
+        // Explicitly exclude all male voice names (David, Mark, Raul, George, etc.)
+        const nonMaleLang = langVoices.filter(
+          (v) => !/david|mark|george|raul|ravi|stefan|pablo|\bmale\b/i.test(v.name)
+        );
+
         const femaleVoice =
-          langVoices.find((v) =>
-            /google|female|zira|helena|laura|monica|paulina|sabina|hortense|julie|kyoko|nanami|elsa/i.test(
+          nonMaleLang.find((v) =>
+            /google|female|zira|heera|helena|laura|monica|paulina|sabina|hortense|julie|kyoko|nanami|elsa/i.test(
               v.name
             )
           ) ||
-          langVoices.find(
-            (v) => !/david|mark|george|raul|ravi|male|stefan|pablo/i.test(v.name)
+          nonMaleLang[0] ||
+          // Fallback to any female system voice on the device (Zira, Heera, etc.) and NEVER Microsoft David
+          voices.find((v) =>
+            /google|female|zira|heera|helena|laura|monica|paulina|samantha|karen|victoria/i.test(v.name)
           ) ||
-          langVoices[0];
+          voices.find((v) => !/david|mark|george|raul|ravi|\bmale\b/i.test(v.name));
 
         if (femaleVoice) {
           utterance.voice = femaleVoice;
+        } else {
+          // If no female or non-male voice exists on this machine, NEVER fallback to Microsoft David!
+          resolve(false);
+          return;
         }
+      } else {
+        // If no voices list is available yet, avoid default Microsoft David
+        resolve(false);
+        return;
       }
 
       utterance.onend = () => resolve(true);
@@ -186,8 +201,8 @@ function speakWithWebSpeech(clean: string, lang: string, slow: boolean): Promise
 
 /**
  * Speaks text with authentic native female pronunciation.
- * Primary engine: high-fidelity native female Google TTS audio stream.
- * Secondary engine: Web Speech API with strict female voice filtering.
+ * Primary engine: high-fidelity native female audio stream via /api/tts.
+ * Secondary engine: Web Speech API with strict female voice filtering (never Microsoft David).
  */
 export function speakText(
   text: string,
@@ -228,9 +243,9 @@ export function speakText(
       }
     };
 
-    // 1. Primary Engine: High-fidelity native female Google TTS audio
+    // 1. Primary Engine: High-fidelity native female audio stream via /api/tts
     const encoded = encodeURIComponent(clean);
-    const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&client=tw-ob&q=${encoded}`;
+    const audioUrl = `${API_BASE}/api/tts?lang=${lang}&text=${encoded}`;
 
     try {
       const audio = new Audio(audioUrl);
@@ -249,8 +264,14 @@ export function speakText(
 
       const playPromise = audio.play();
       if (playPromise !== undefined) {
-        playPromise.catch(() => {
-          // If browser policy blocks unprompted audio autoplay, fallback gracefully
+        playPromise.catch((err) => {
+          currentAudio = null;
+          // If browser policy blocks unprompted audio autoplay on page load before user click,
+          // do NOT trigger WebSpeech fallback to prevent unintended male voices
+          if (err && (err.name === "NotAllowedError" || err.name === "AbortError")) {
+            safeResolve(false);
+            return;
+          }
           speakWithWebSpeech(clean, lang, slow).then(safeResolve);
         });
       }

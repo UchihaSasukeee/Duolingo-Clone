@@ -16,7 +16,14 @@ import { API_BASE } from "@/utils/api";
 export default function LessonPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { hearts, gems, reduceHearts, spendGems, refillHearts, completeLesson, token, activeCourse } = useUserStore();
+  const hearts = useUserStore((state) => state.hearts);
+  const gems = useUserStore((state) => state.gems);
+  const reduceHearts = useUserStore((state) => state.reduceHearts);
+  const spendGems = useUserStore((state) => state.spendGems);
+  const refillHearts = useUserStore((state) => state.refillHearts);
+  const completeLesson = useUserStore((state) => state.completeLesson);
+  const token = useUserStore((state) => state.token);
+  const activeCourse = useUserStore((state) => state.activeCourse);
   const { playCorrect, playWrong, playFinished } = useSoundEffects();
   const { user } = useUser();
   const userId = user?.id || "guest";
